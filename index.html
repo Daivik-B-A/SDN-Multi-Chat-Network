@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SDN Chat</title>
+<style>
+:root{
+  color-scheme: light dark;
+  --bg:#f3f5f9; --panel:#ffffff; --text:#1b2330; --muted:#6a7588; --line:#e2e6ee;
+  --accent:#2f6fed; --accent-text:#ffffff; --me:#2f6fed; --me-text:#ffffff;
+  --other:#eef1f7; --pm:#7a4fd6; --ok:#1f9d55; --warn:#d98a00; --bad:#d64545;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0f131a; --panel:#161b25; --text:#e6e9ef; --muted:#8b95a7; --line:#263043;
+    --accent:#5b8def; --accent-text:#0b1220; --me:#33579f; --me-text:#ffffff;
+    --other:#202838; --pm:#b093f5; --ok:#3ccf7e; --warn:#f0b13a; --bad:#f06b6b;
+  }
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text)}
+button,input{font:inherit;color:inherit}
+.hidden{display:none !important}
+
+/* login */
+.login{height:100%;display:flex;align-items:center;justify-content:center;padding:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:28px;width:100%;max-width:380px}
+.card h1{font-size:20px;margin:0 0 4px}
+.card p{margin:0 0 18px;color:var(--muted);font-size:14px}
+.field{width:100%;padding:11px 12px;border-radius:9px;border:1px solid var(--line);background:var(--bg)}
+.btn{padding:10px 16px;border:0;border-radius:9px;background:var(--accent);color:var(--accent-text);cursor:pointer;font-weight:600}
+.btn.ghost{background:transparent;color:var(--text);border:1px solid var(--line)}
+.btn:disabled{opacity:.5;cursor:default}
+.err{color:var(--bad);font-size:13px;min-height:18px;margin:8px 0 0}
+
+/* app */
+.app{height:100%;display:grid;grid-template-columns:250px 1fr}
+.side{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.side section{padding:14px;border-bottom:1px solid var(--line);overflow:auto}
+.side h3{margin:0 0 8px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.item{display:flex;justify-content:space-between;gap:8px;padding:7px 9px;border-radius:8px;cursor:pointer;font-size:14px}
+.item:hover{background:var(--other)}
+.item.active{background:var(--other);font-weight:600}
+.item small{color:var(--muted)}
+.row{display:flex;gap:6px;margin-top:8px}
+.row .field{padding:8px 10px}
+.main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.top{display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.top .title{font-weight:700}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:13px;color:var(--muted)}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}
+.dot.ok{background:var(--ok)} .dot.warn{background:var(--warn)} .dot.bad{background:var(--bad)}
+.spacer{flex:1}
+.log{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:8px;min-height:0}
+.msg{max-width:min(620px,85%);padding:8px 12px;border-radius:12px;background:var(--other);word-wrap:break-word;overflow-wrap:anywhere;font-size:14.5px;line-height:1.4}
+.msg .who{display:block;font-size:12px;font-weight:700;color:var(--muted);margin-bottom:2px}
+.msg.me{align-self:flex-end;background:var(--me);color:var(--me-text)}
+.msg.pm{border-left:3px solid var(--pm)}
+.msg.pm .who{color:var(--pm)}
+.msg.sys{align-self:center;background:transparent;color:var(--muted);font-size:12.5px;padding:2px 8px}
+.compose{display:flex;gap:8px;padding:12px 16px;background:var(--panel);border-top:1px solid var(--line)}
+.compose .field{flex:1}
+.hint{padding:0 16px 10px;background:var(--panel);color:var(--muted);font-size:12px}
+.presets{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.presets button{padding:4px 9px;border-radius:999px;border:1px solid var(--line);background:transparent;cursor:pointer;font-size:12px}
+.presets button:hover{background:var(--other)}
+.lossrow{display:flex;gap:8px;align-items:center}
+.lossrow input[type=range]{flex:1;min-width:0}
+.lossrow .field{width:74px;padding:7px 8px}
+.note{color:var(--muted);font-size:12px;margin-top:6px;line-height:1.35}
+.side{overflow:auto}
+@media (max-width:720px){
+  .app{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+  .side{flex-direction:row;border-right:0;border-bottom:1px solid var(--line);max-height:150px;overflow-x:auto}
+  .side section{min-width:200px;border-bottom:0;border-right:1px solid var(--line)}
+}
+</style>
+</head>
+<body>
+
+<div id="login" class="login">
+  <div class="card">
+    <h1>SDN Chat</h1>
+    <p>Multi-client TCP chat managed by an SDN controller.</p>
+    <input id="nameInput" class="field" placeholder="Choose a username" maxlength="24" autocomplete="off" autofocus>
+    <div id="loginErr" class="err"></div>
+    <div class="row"><button id="joinBtn" class="btn" style="width:100%">Join chat</button></div>
+  </div>
+</div>
+
+<div id="app" class="app hidden">
+  <aside class="side">
+    <section>
+      <h3>Rooms</h3>
+      <div id="rooms"></div>
+      <div class="row">
+        <input id="roomInput" class="field" placeholder="new or existing room" maxlength="24">
+        <button id="roomBtn" class="btn ghost">Join</button>
+      </div>
+    </section>
+    <section>
+      <h3>Online users</h3>
+      <div id="users"></div>
+    </section>
+    <section id="lossBox">
+      <h3>Packet loss</h3>
+      <div class="lossrow">
+        <input id="lossRange" type="range" min="0" max="100" step="1" value="0">
+        <input id="lossNum" class="field" type="number" min="0" max="100" step="0.1" value="0">
+        <span>%</span>
+      </div>
+      <div class="row"><button id="lossApply" class="btn ghost" style="width:100%">Apply loss</button></div>
+      <div class="presets" id="lossPresets">
+        <button data-v="0">0%</button><button data-v="5">5%</button><button data-v="10">10%</button>
+        <button data-v="25">25%</button><button data-v="50">50%</button><button data-v="100">100%</button>
+      </div>
+      <div class="note" id="lossInfo">Drops this share of packets in the Mininet network (each direction). Affects everyone.</div>
+    </section>
+  </aside>
+  <div class="main">
+    <div class="top">
+      <span class="title" id="roomTitle">Lobby</span>
+      <span class="chip"><span id="statusDot" class="dot"></span><span id="statusText">connecting</span></span>
+      <span class="chip" title="Round trip through the SDN-controlled network"><span id="rttDot" class="dot"></span>RTT <b id="rttNow">--</b> ms (avg <span id="rttAvg">--</span>)</span>
+      <span class="chip" title="Packet loss currently applied in the network"><span id="lossDot" class="dot"></span>loss <b id="lossNow">--</b>%</span>
+      <span class="spacer"></span>
+      <span class="chip" id="meChip"></span>
+      <button id="leaveBtn" class="btn ghost">Leave</button>
+    </div>
+    <div id="log" class="log"></div>
+    <div class="hint">Commands: /join room &middot; /msg user text &middot; /users &middot; /rooms &middot; click a user to start a private message</div>
+    <div class="compose">
+      <input id="msgInput" class="field" placeholder="Type a message" autocomplete="off" maxlength="1000">
+      <button id="sendBtn" class="btn">Send</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var ws = null, me = '', room = 'Lobby', loggedIn = false, intentional = false;
+  var retryTimer = null, pingTimer = null, listTimer = null;
+  var silent = { users: 0, rooms: 0 };
+  var pings = {}, rtts = [];
+  var history = {};   // room -> [message objects]
+  var lossSilent = 0, lossAvailable = true, missed = 0;
+
+  function setStatus(text, cls) {
+    $('statusText').textContent = text;
+    $('statusDot').className = 'dot ' + (cls || '');
+  }
+
+  function showLoginError(t) {
+    $('loginErr').textContent = t;
+    $('joinBtn').disabled = false;
+  }
+
+  function wsOpen() { return ws && ws.readyState === 1; }
+  function send(t) { if (wsOpen()) ws.send(t); }
+
+  // ---------------------------------------------------------- rendering
+  function render(m) {
+    var d = document.createElement('div');
+    d.className = 'msg ' + m.type;
+    if (m.who) {
+      var w = document.createElement('span');
+      w.className = 'who';
+      w.textContent = m.who;
+      d.appendChild(w);
+    }
+    d.appendChild(document.createTextNode(m.text));
+    var log = $('log');
+    var stick = log.scrollTop + log.clientHeight >= log.scrollHeight - 40;
+    log.appendChild(d);
+    if (stick || m.type === 'me') log.scrollTop = log.scrollHeight;
+  }
+
+  function addMsg(m) {
+    (history[room] = history[room] || []).push(m);
+    if (history[room].length > 500) history[room].shift();
+    render(m);
+  }
+
+  function showRoom() {
+    $('roomTitle').textContent = '# ' + room;
+    $('log').innerHTML = '';
+    (history[room] || []).forEach(render);
+    $('log').scrollTop = $('log').scrollHeight;
+    var items = document.querySelectorAll('#rooms .item');
+    for (var i = 0; i < items.length; i++) {
+      items[i].classList.toggle('active', items[i].getAttribute('data-room') === room);
+    }
+  }
+
+  function renderRooms(list) {
+    var box = $('rooms');
+    box.innerHTML = '';
+    list.forEach(function (r) {
+      var d = document.createElement('div');
+      d.className = 'item' + (r.name === room ? ' active' : '');
+      d.setAttribute('data-room', r.name);
+      var a = document.createElement('span'); a.textContent = '# ' + r.name;
+      var b = document.createElement('small'); b.textContent = r.count;
+      d.appendChild(a); d.appendChild(b);
+      d.onclick = function () { send('/join ' + r.name); };
+      box.appendChild(d);
+    });
+  }
+
+  function renderUsers(list) {
+    var box = $('users');
+    box.innerHTML = '';
+    list.forEach(function (u) {
+      var d = document.createElement('div');
+      d.className = 'item';
+      var a = document.createElement('span'); a.textContent = u.name + (u.name === me ? ' (you)' : '');
+      var b = document.createElement('small'); b.textContent = u.room;
+      d.appendChild(a); d.appendChild(b);
+      if (u.name !== me) {
+        d.onclick = function () { $('msgInput').value = '/msg ' + u.name + ' '; $('msgInput').focus(); };
+      }
+      box.appendChild(d);
+    });
+  }
+
+  // ------------------------------------------------------- RTT display
+  function updateRtt(ms) {
+    rtts.push(ms);
+    if (rtts.length > 20) rtts.shift();
+    var avg = rtts.reduce(function (a, b) { return a + b; }, 0) / rtts.length;
+    $('rttNow').textContent = ms.toFixed(1);
+    $('rttAvg').textContent = avg.toFixed(1);
+    $('rttDot').className = 'dot ' + (ms < 25 ? 'ok' : ms < 120 ? 'warn' : 'bad');
+  }
+
+  function doPing() {
+    if (!wsOpen() || !loggedIn) return;
+    var now = performance.now();
+    Object.keys(pings).forEach(function (k) {
+      if (now - pings[k] > 3000) {
+        delete pings[k]; missed++;
+        $('rttNow').textContent = 'timeout'; $('rttDot').className = 'dot bad';
+        setStatus('no response (packet loss?)', 'bad');
+      }
+    });
+    var token = 'w' + Math.floor(now * 1000);
+    pings[token] = now;
+    send('/ping ' + token);
+  }
+
+  function refreshLists() {
+    if (!wsOpen() || !loggedIn) return;
+    silent.users++; send('/users');
+    silent.rooms++; send('/rooms');
+  }
+
+  // ------------------------------------------------- incoming protocol
+  function handleLine(t) {
+    var m;
+    if ((m = /^LOSSERR ?(.*)$/.exec(t))) {
+      if (lossSilent > 0) lossSilent--;
+      lossAvailable = !/not available/.test(m[1]);
+      $('lossApply').disabled = !lossAvailable;
+      $('lossInfo').textContent = lossAvailable ? m[1] : 'Loss control not available: start the topology with topology/topo.py.';
+      $('lossNow').textContent = lossAvailable ? $('lossNow').textContent : 'n/a';
+      if (lossAvailable) addMsg({ type: 'sys', text: 'Packet loss: ' + m[1] });
+      return;
+    }
+    if ((m = /^LOSS (\S+)$/.exec(t))) {
+      var v = parseFloat(m[1]);
+      $('lossNow').textContent = String(v);
+      $('lossRange').value = v; $('lossNum').value = v;
+      $('lossDot').className = 'dot ' + (v === 0 ? 'ok' : v < 20 ? 'warn' : 'bad');
+      $('lossApply').disabled = false;
+      if (lossSilent > 0) { lossSilent--; return; }
+      addMsg({ type: 'sys', text: 'Packet loss is now ' + v + '%' });
+      return;
+    }
+    if ((m = /^PONG (\S+)/.exec(t))) {
+      if (pings[m[1]] !== undefined) {
+        updateRtt(performance.now() - pings[m[1]]); delete pings[m[1]];
+        if (missed > 0) { missed = 0; setStatus('connected', 'ok'); }
+      }
+      return;
+    }
+    if (/^WELCOME /.test(t)) {
+      loggedIn = true;
+      silent.users = silent.rooms = 0;
+      $('login').classList.add('hidden');
+      $('app').classList.remove('hidden');
+      $('meChip').textContent = me;
+      setStatus('connected', 'ok');
+      addMsg({ type: 'sys', text: 'Connected as ' + me });
+      if (room !== 'Lobby') send('/join ' + room);
+      showRoom();
+      refreshLists();
+      lossSilent++; send('!loss?');
+      clearInterval(pingTimer); clearInterval(listTimer);
+      pingTimer = setInterval(doPing, 2000);
+      listTimer = setInterval(refreshLists, 5000);
+      doPing();
+      return;
+    }
+    if (/^ERROR:/.test(t) && !loggedIn) {
+      intentional = true;
+      showLoginError(t.replace(/^ERROR:\s*/, ''));
+      if (ws) ws.close();
+      return;
+    }
+    if (/^SYSTEM: Online: /.test(t)) {
+      var us = t.replace(/^SYSTEM: Online: /, '').split(', ').map(function (x) {
+        var mm = /^(.*)\((.*)\)$/.exec(x); return mm ? { name: mm[1], room: mm[2] } : { name: x, room: '' };
+      });
+      renderUsers(us);
+      if (silent.users > 0) { silent.users--; return; }
+      addMsg({ type: 'sys', text: t.replace(/^SYSTEM: /, '') });
+      return;
+    }
+    if (/^SYSTEM: Rooms: /.test(t)) {
+      var rs = t.replace(/^SYSTEM: Rooms: /, '').split(', ').map(function (x) {
+        var mm = /^(.*)\((\d+)\)$/.exec(x); return mm ? { name: mm[1], count: mm[2] } : { name: x, count: '' };
+      });
+      renderRooms(rs);
+      if (silent.rooms > 0) { silent.rooms--; return; }
+      addMsg({ type: 'sys', text: t.replace(/^SYSTEM: /, '') });
+      return;
+    }
+    if ((m = /^SYSTEM: Joined room '(.*)'$/.exec(t))) {
+      room = m[1];
+      showRoom();
+      addMsg({ type: 'sys', text: 'You joined #' + room });
+      refreshLists();
+      return;
+    }
+    if ((m = /^\[PM (from|to) ([^\]]+)\]: (.*)$/.exec(t))) {
+      addMsg({ type: 'pm', who: 'Private ' + m[1] + ' ' + m[2], text: m[3] });
+      return;
+    }
+    if ((m = /^\[([^\]]+)\]: (.*)$/.exec(t))) {
+      addMsg({ type: 'other', who: m[1], text: m[2] });
+      return;
+    }
+    addMsg({ type: 'sys', text: t.replace(/^SYSTEM: /, '') });
+  }
+
+  // ------------------------------------------------------ connection
+  function connect() {
+    var proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    setStatus('connecting', 'warn');
+    ws = new WebSocket(proto + '://' + location.host + '/ws?user=' + encodeURIComponent(me));
+    ws.onmessage = function (e) { handleLine(e.data); };
+    ws.onclose = function () {
+      clearInterval(pingTimer); clearInterval(listTimer);
+      if (intentional) return;
+      if (loggedIn) {
+        setStatus('disconnected, retrying...', 'bad');
+        $('rttNow').textContent = '--';
+        loggedIn = false;
+        addMsg({ type: 'sys', text: 'Connection lost. Reconnecting...' });
+        retryTimer = setTimeout(connect, 2000);
+      } else {
+        showLoginError('Cannot reach the gateway.');
+      }
+    };
+  }
+
+  function startSession() {
+    var n = $('nameInput').value.trim();
+    if (!/^[A-Za-z0-9_\-]{1,24}$/.test(n)) {
+      showLoginError('Use 1-24 letters, digits, _ or -');
+      return;
+    }
+    me = n; room = 'Lobby'; history = {}; rtts = []; pings = {}; missed = 0; lossSilent = 0;
+    intentional = false; loggedIn = false;
+    $('loginErr').textContent = '';
+    $('joinBtn').disabled = true;
+    connect();
+  }
+
+  function leave() {
+    intentional = true;
+    clearTimeout(retryTimer); clearInterval(pingTimer); clearInterval(listTimer);
+    if (wsOpen()) { send('/quit'); ws.close(); }
+    loggedIn = false;
+    $('app').classList.add('hidden');
+    $('login').classList.remove('hidden');
+    $('joinBtn').disabled = false;
+    $('log').innerHTML = '';
+  }
+
+  function submit() {
+    var input = $('msgInput');
+    var t = input.value.trim();
+    if (!t) return;
+    input.value = '';
+    if (t === '/quit') { leave(); return; }
+    if (t === '/users') { send(t); return; }
+    if (t === '/rooms') { send(t); return; }
+    send(t);
+    if (t.charAt(0) !== '/') addMsg({ type: 'me', text: t });
+  }
+
+  $('joinBtn').onclick = startSession;
+  $('nameInput').onkeydown = function (e) { if (e.key === 'Enter') startSession(); };
+  $('sendBtn').onclick = submit;
+  $('msgInput').onkeydown = function (e) { if (e.key === 'Enter') submit(); };
+  $('leaveBtn').onclick = leave;
+  function applyLoss() {
+    var v = parseFloat($('lossNum').value);
+    if (isNaN(v) || v < 0 || v > 100) { $('lossInfo').textContent = 'Enter a number between 0 and 100.'; return; }
+    $('lossApply').disabled = true;
+    send('!loss ' + v);
+  }
+  $('lossRange').oninput = function () { $('lossNum').value = $('lossRange').value; };
+  $('lossNum').oninput = function () { var v = parseFloat($('lossNum').value); if (!isNaN(v)) $('lossRange').value = Math.min(100, Math.max(0, v)); };
+  $('lossNum').onkeydown = function (e) { if (e.key === 'Enter') applyLoss(); };
+  $('lossApply').onclick = applyLoss;
+  $('lossPresets').onclick = function (e) {
+    var v = e.target.getAttribute && e.target.getAttribute('data-v');
+    if (v !== null && v !== undefined) { $('lossNum').value = v; $('lossRange').value = v; applyLoss(); }
+  };
+  $('roomBtn').onclick = function () {
+    var r = $('roomInput').value.trim();
+    if (r) { send('/join ' + r); $('roomInput').value = ''; }
+  };
+  $('roomInput').onkeydown = function (e) { if (e.key === 'Enter') $('roomBtn').click(); };
+})();
+</script>
+</body>
+</html>
